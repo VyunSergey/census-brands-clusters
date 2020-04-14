@@ -1,12 +1,12 @@
-package ru.sberbank.bigdata.mntz.census.brands
+package com.vyunsergey
 
 import com.crealytics.spark.excel._
+import com.vyunsergey.conf.{ReadConfig, WriteConfig}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import ru.sberbank.bigdata.mntz.census.brands.conf._
 import zio._
 
 object SparkApp {

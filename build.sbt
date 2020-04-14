@@ -5,7 +5,7 @@ val PureConfigVersion   = "0.12.0"
 
 lazy val root = (project in file("."))
   .settings(
-    organization := "ru.sberbank",
+    organization := "com.vyunsergey",
     name := "census-brands-clusters",
     version := "0.0.1",
     scalaVersion := "2.12.11",

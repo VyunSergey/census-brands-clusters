@@ -1,9 +1,9 @@
-package ru.sberbank.bigdata.mntz.census.brands
+package com.vyunsergey
 
-import ru.sberbank.bigdata.mntz.census.brands.args._
-import ru.sberbank.bigdata.mntz.census.brands.conf._
-import ru.sberbank.bigdata.mntz.census.brands.spark._
-import ru.sberbank.bigdata.mntz.census.brands.struct._
+import com.vyunsergey.args._
+import com.vyunsergey.conf._
+import com.vyunsergey.spark._
+import com.vyunsergey.struct._
 import zio._
 import zio.console._
 
@@ -15,8 +15,8 @@ object Main extends App {
    */
   def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
 //    createClusters(args)
-//    checkResult(args)
-    createBrands(args)
+    checkResult(args)
+//    createBrands(args)
       .provideSomeLayer[ZEnv](Configuration.live ++ SparkEnv.live)
       .foldM(
         error => putStrLn(s"Execution failed with error: $error") *> ZIO.succeed(1),
@@ -62,7 +62,7 @@ object Main extends App {
     _          <- putStrLn(s"schema: ${brands.printSchema()}")
     _          <- putStrLn(s"sample: ${brands.show(false)}")
     // collect Statistics with Brands on Census cluster DataFrame
-    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "brand").provide(spark)
+    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "mcc_cat", "mcc_name", "mcc_code", "brand").provide(spark)
     _          <- putStrLn(s"stats: ${brandsStat.show(300, truncate = false)}")
   } yield ()
 
@@ -81,7 +81,7 @@ object Main extends App {
     _          <- putStrLn(s"count: ${data.count}")
     _          <- putStrLn(s"schema: ${data.printSchema()}")
     _          <- putStrLn(s"sample: ${data.show(false)}")
-    statsBrand <- SparkApp.countStatistics(data, "mcc_supercat", "brands_part").provide(spark)
+    statsBrand <- SparkApp.countStatistics(data, "mcc_supercat", "brands_part", "mcc_cat").provide(spark)
     _          <- putStrLn(s"stats: ${statsBrand.show(300, truncate = false)}")
   } yield ()
 

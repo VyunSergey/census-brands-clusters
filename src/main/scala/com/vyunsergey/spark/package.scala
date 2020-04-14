@@ -1,4 +1,4 @@
-package ru.sberbank.bigdata.mntz.census.brands
+package com.vyunsergey
 
 import org.apache.spark.sql.SparkSession
 import zio._

@@ -1,4 +1,4 @@
-package ru.sberbank.bigdata.mntz.census.brands.conf
+package com.vyunsergey.conf
 
 import pureconfig._
 import pureconfig.generic.ProductHint

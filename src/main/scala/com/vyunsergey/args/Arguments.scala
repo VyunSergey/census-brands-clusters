@@ -1,4 +1,4 @@
-package ru.sberbank.bigdata.mntz.census.brands.args
+package com.vyunsergey.args
 
 final case class Arguments(
                             readPath: Option[String],

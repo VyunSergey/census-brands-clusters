@@ -1,4 +1,4 @@
-package ru.sberbank.bigdata.mntz.census.brands.struct
+package com.vyunsergey.struct
 
 import org.apache.spark.sql.types._
 

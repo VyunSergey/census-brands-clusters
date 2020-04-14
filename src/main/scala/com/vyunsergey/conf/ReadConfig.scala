@@ -1,4 +1,4 @@
-package ru.sberbank.bigdata.mntz.census.brands.conf
+package com.vyunsergey.conf
 
 final case class ReadConfig(
                              dataMap: Map[String, String],
