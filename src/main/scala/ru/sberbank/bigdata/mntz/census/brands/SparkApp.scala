@@ -198,9 +198,66 @@ object SparkApp {
     )
   }
 
+  def LeftSubstring(str: String, len: Int): String = {
+    val ind =
+      if(0 <= len && len <= str.length) len
+      else if(len > str.length) str.length
+      else 0
+    str.substring(0, ind)
+  }
+
+  def RightSubstring(str: String, len: Int): String = {
+    val ind =
+      if(0 <= len && len <= str.length) len
+      else if(len > str.length) str.length
+      else 0
+    str.substring(str.length - ind, str.length)
+  }
+
+  def BothSubstring(str: String, len: Int): String = {
+    if (0 <= len && len <= str.length) LeftSubstring(str, len / 2) + "\n...\n" + RightSubstring(str, len / 2)
+    else str
+  }
+
   def getFirst(data: DataFrame): ZIO[SparkSession, Throwable, Row] = {
     Task(data.first())
   }
+
+  def withExprColumn(data: DataFrame,
+                     colName: String,
+                     expression: String): ZIO[SparkSession, Throwable, DataFrame] = {
+    Task(data.withColumn(colName, expr(expression)))
+  }
+
+  def createBrandExpression(data: DataFrame,
+                            brandColName: String,
+                            exprColName: String): ZIO[SparkSession, Throwable, String] = for {
+    spark <- ZIO.environment[SparkSession]
+    expr <- Task({
+      import spark.implicits._
+
+      data.select(
+        col(exprColName).as[String],
+        col(brandColName).as[String]
+      ).collect().toList
+        .map({case (exp, brand) =>
+          s"when $exp then '${brand.replaceAll("'", "`")}'"
+        })
+        .mkString("\n")
+    })
+  } yield {
+    if (expr.nonEmpty) s"case $expr end"
+    else "cast(null as string)"
+  }
+
+  def withBrandColumn(data: DataFrame,
+                      colName: String,
+                      dictData: DataFrame,
+                      brandColName: String,
+                      exprColName: String): ZIO[SparkSession, Throwable, DataFrame] = for {
+    expr <- createBrandExpression(dictData, brandColName, exprColName)
+    data <- withExprColumn(data, colName, expr)
+  } yield data
 
   def transformData(data: DataFrame): ZIO[SparkSession, Throwable, DataFrame] = {
     val travelFilter         = col("mcc_supercat").eqNullSafe("Поездки, доставка, хранение")

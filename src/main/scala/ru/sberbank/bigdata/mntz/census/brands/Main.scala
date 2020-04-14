@@ -14,9 +14,9 @@ object Main extends App {
    * Main program function
    */
   def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
-//    program(args)
+//    createClusters(args)
 //    checkResult(args)
-    showDict(args)
+    createBrands(args)
       .provideSomeLayer[ZEnv](Configuration.live ++ SparkEnv.live)
       .foldM(
         error => putStrLn(s"Execution failed with error: $error") *> ZIO.succeed(1),
@@ -34,8 +34,9 @@ object Main extends App {
    *  |-- comment: string (nullable = true)
    *
    * Check Statistics on Excel Dictionary
+   * Create Brands from Census cluster DataFrame
    */
-  def showDict(args: List[String]): ZIO[AppEnvironment, Throwable, Unit] = for {
+  def createBrands(args: List[String]): ZIO[AppEnvironment, Throwable, Unit] = for {
     conf       <- config
     args       <- ArgumentsParser.parse(args)
     readPath    = args.flatMap(_.readPath)
@@ -43,12 +44,26 @@ object Main extends App {
     _          <- putStrLn(s"read path: $readPath")
     _          <- putStrLn(s"write path: $writePath")
     spark      <- createSparkSession("census-brands", 8)
-    excel      <- SparkApp.readExcel(conf.readConf, BrandsDictSchema.schema, readPath).provide(spark)
-    _          <- putStrLn(s"count: ${excel.count}")
-    _          <- putStrLn(s"schema: ${excel.printSchema()}")
-    _          <- putStrLn(s"sample: ${excel.show(false)}")
-    statsExcel <- SparkApp.countStatistics(excel, "mcc_supercat").provide(spark)
-    _          <- putStrLn(s"stats: ${statsExcel.show(300, truncate = false)}")
+    // read Excel Dictionary
+    excel      <- SparkApp.readExcel(conf.readConf, BrandsDictSchema.schema).provide(spark)
+    // filter on Column mcc_supercat
+    superCat    = "Поездки, доставка, хранение"
+    // filter Rules from Excel with Column mcc_supercat
+    rules      <- SparkApp.filterData(excel, "mcc_supercat", Some(superCat)).provide(spark)
+    // create Brands Expression as String
+    expr       <- SparkApp.createBrandExpression(rules, "brand", "reg_exp").provide(spark)
+    _          <- putStrLn(s"expression:\n${SparkApp.BothSubstring(expr, 1000)}")
+    // read Census cluster DataFrame
+    data       <- SparkApp.readData(conf.readConf, CensusSchema.schema, readPath).provide(spark)
+    _          <- putStrLn(s"count: ${data.count}")
+    // create Brands from Census cluster DataFrame with Brands Expression
+    brands     <- SparkApp.withBrandColumn(data, "brand", rules, "brand", "reg_exp").provide(spark)
+    _          <- putStrLn(s"count: ${brands.count}")
+    _          <- putStrLn(s"schema: ${brands.printSchema()}")
+    _          <- putStrLn(s"sample: ${brands.show(false)}")
+    // collect Statistics with Brands on Census cluster DataFrame
+    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "brand").provide(spark)
+    _          <- putStrLn(s"stats: ${brandsStat.show(300, truncate = false)}")
   } yield ()
 
   /*
@@ -74,7 +89,7 @@ object Main extends App {
    * Check Statistics on Source BigData Census DataFrame
    * Create Result cluster`s from Source BigData Census DataFrame
    */
-  def program(args: List[String]): ZIO[AppEnvironment, Throwable, Unit] = for {
+  def createClusters(args: List[String]): ZIO[AppEnvironment, Throwable, Unit] = for {
     conf       <- config
     args       <- ArgumentsParser.parse(args)
     readPath    = args.flatMap(_.readPath)
