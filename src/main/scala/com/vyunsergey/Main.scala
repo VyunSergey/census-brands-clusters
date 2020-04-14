@@ -4,6 +4,7 @@ import com.vyunsergey.args._
 import com.vyunsergey.conf._
 import com.vyunsergey.spark._
 import com.vyunsergey.struct._
+import org.apache.spark.sql.functions._
 import zio._
 import zio.console._
 
@@ -15,7 +16,7 @@ object Main extends App {
    */
   def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
 //    createClusters(args)
-    checkResult(args)
+    createBrands(args)
 //    createBrands(args)
       .provideSomeLayer[ZEnv](Configuration.live ++ SparkEnv.live)
       .foldM(
@@ -57,12 +58,13 @@ object Main extends App {
     data       <- SparkApp.readData(conf.readConf, CensusSchema.schema, readPath).provide(spark)
     _          <- putStrLn(s"count: ${data.count}")
     // create Brands from Census cluster DataFrame with Brands Expression
-    brands     <- SparkApp.withBrandColumn(data, "brand", rules, "brand", "reg_exp").provide(spark)
+    brands     <- SparkApp.withBrandColumn(data, "brand", rules,
+      "brand", "reg_exp").provide(spark)
     _          <- putStrLn(s"count: ${brands.count}")
     _          <- putStrLn(s"schema: ${brands.printSchema()}")
     _          <- putStrLn(s"sample: ${brands.show(false)}")
     // collect Statistics with Brands on Census cluster DataFrame
-    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "mcc_cat", "mcc_name", "mcc_code", "brand").provide(spark)
+    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "brand").provide(spark)
     _          <- putStrLn(s"stats: ${brandsStat.show(300, truncate = false)}")
   } yield ()
 
@@ -78,10 +80,24 @@ object Main extends App {
     _          <- putStrLn(s"write path: $writePath")
     spark      <- createSparkSession("census-brands", 8)
     data       <- SparkApp.readData(conf.readConf, CensusSchema.schema, readPath).provide(spark)
-    _          <- putStrLn(s"count: ${data.count}")
-    _          <- putStrLn(s"schema: ${data.printSchema()}")
-    _          <- putStrLn(s"sample: ${data.show(false)}")
-    statsBrand <- SparkApp.countStatistics(data, "mcc_supercat", "brands_part", "mcc_cat").provide(spark)
+    aircraft   <- SparkApp.filterData(data, "brands_part", Some("travel_2")).provide(spark)
+    _          <- putStrLn(s"count: ${aircraft.count}")
+    _          <- putStrLn(s"schema: ${aircraft.printSchema()}")
+    _          <- putStrLn(s"sample: ${aircraft.show(false)}")
+    result     <- Task(
+                   aircraft
+                     .withColumn("brand",
+                       expr("regexp_replace(trim(mcc_name), 'Авиакомпании – ', '')"))
+                     .withColumn("mcl",
+                       expr("trim(lower(brand))"))
+                     .withColumn("rule", expr("concat_ws(''," +
+                       "'mcc_code IN (\\''," +
+                       "mcc_code," +
+                       "'\\') AND trim(lower(mcc_name)) regexp \\''," +
+                       "mcl," +
+                       "'\\'')"))
+    )
+    statsBrand <- SparkApp.countStatistics(result, "mcc_name", "rule", "brand").provide(spark)
     _          <- putStrLn(s"stats: ${statsBrand.show(300, truncate = false)}")
   } yield ()
 
