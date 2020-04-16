@@ -16,8 +16,8 @@ object Main extends App {
    */
   def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
 //    createClusters(args)
-    createBrands(args)
 //    createBrands(args)
+    checkResult(args)
       .provideSomeLayer[ZEnv](Configuration.live ++ SparkEnv.live)
       .foldM(
         error => putStrLn(s"Execution failed with error: $error") *> ZIO.succeed(1),
@@ -37,7 +37,7 @@ object Main extends App {
    * Check Statistics on Excel Dictionary
    * Create Brands from Census cluster DataFrame
    */
-  def createBrands(args: List[String]): ZIO[AppEnvironment, Throwable, Unit] = for {
+  def checkResult(args: List[String]): ZIO[AppEnvironment, Throwable, Unit] = for {
     conf       <- config
     args       <- ArgumentsParser.parse(args)
     readPath    = args.flatMap(_.readPath)
@@ -64,14 +64,14 @@ object Main extends App {
     _          <- putStrLn(s"schema: ${brands.printSchema()}")
     _          <- putStrLn(s"sample: ${brands.show(false)}")
     // collect Statistics with Brands on Census cluster DataFrame
-    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "brand").provide(spark)
+    brandsStat <- SparkApp.countStatistics(brands.filter("brands_part == 'travel_4'"), "mcc_supercat", "brands_part", "brand").provide(spark)
     _          <- putStrLn(s"stats: ${brandsStat.show(300, truncate = false)}")
   } yield ()
 
   /*
    * Check Statistics on Result DataFrame cluster`s from Source BigData Census DataFrame
    */
-  def checkResult(args: List[String]): ZIO[AppEnvironment, Throwable, Unit] = for {
+  def createBrands(args: List[String]): ZIO[AppEnvironment, Throwable, Unit] = for {
     conf       <- config
     args       <- ArgumentsParser.parse(args)
     readPath    = args.flatMap(_.readPath)
@@ -80,14 +80,15 @@ object Main extends App {
     _          <- putStrLn(s"write path: $writePath")
     spark      <- createSparkSession("census-brands", 8)
     data       <- SparkApp.readData(conf.readConf, CensusSchema.schema, readPath).provide(spark)
-    aircraft   <- SparkApp.filterData(data, "brands_part", Some("travel_2")).provide(spark)
-    _          <- putStrLn(s"count: ${aircraft.count}")
-    _          <- putStrLn(s"schema: ${aircraft.printSchema()}")
-    _          <- putStrLn(s"sample: ${aircraft.show(false)}")
+    travel     <- SparkApp.filterData(data, "brands_part", Some("travel_4")).provide(spark)
+    hotel      <- Task(travel.filter("trim(mcc_name) like 'Отели – %'"))
+    _          <- putStrLn(s"count: ${hotel.count}")
+    _          <- putStrLn(s"schema: ${hotel.printSchema()}")
+    _          <- putStrLn(s"sample: ${hotel.show(false)}")
     result     <- Task(
-                   aircraft
+                   hotel
                      .withColumn("brand",
-                       expr("regexp_replace(trim(mcc_name), 'Авиакомпании – ', '')"))
+                       expr("regexp_replace(trim(mcc_name), 'Отели – ', '')"))
                      .withColumn("mcl",
                        expr("trim(lower(brand))"))
                      .withColumn("rule", expr("concat_ws(''," +
@@ -97,7 +98,10 @@ object Main extends App {
                        "mcl," +
                        "'\\'')"))
     )
-    statsBrand <- SparkApp.countStatistics(result, "mcc_name", "rule", "brand").provide(spark)
+    statsBrand <- SparkApp.countStatistics(result
+                                            .filter("length(brand) >= 3")
+                                            .filter("brand not in('неиспользуемый код', 'другие компании')"),
+      "mcc_name", "rule", "brand").provide(spark)
     _          <- putStrLn(s"stats: ${statsBrand.show(300, truncate = false)}")
   } yield ()
 
