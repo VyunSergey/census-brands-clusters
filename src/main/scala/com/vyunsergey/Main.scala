@@ -56,16 +56,29 @@ object Main extends App {
     _          <- putStrLn(s"expression:\n${SparkApp.BothSubstring(expr, 1000)}")
     // read Census cluster DataFrame
     data       <- SparkApp.readData(conf.readConf, CensusSchema.schema, readPath).provide(spark)
+                    .map(_.filter(col("brands_part").isin("travel_1")))
     _          <- putStrLn(s"count: ${data.count}")
     // create Brands from Census cluster DataFrame with Brands Expression
     brands     <- SparkApp.withBrandColumn(data, "brand", rules,
       "brand", "reg_exp").provide(spark)
+                   .map(_//.filter(col("brand").isNull)
+                         .withColumn("has_brand", col("brand").isNotNull)
+                         .withColumn("mcc_clr", trim(lower(substring(col("mcc_name"), 0, 15))))
+                         .withColumn("merchant_clr", trim(lower(substring(col("merchant_nm"), 0, 15))))
+                         .cache()
+                   )
     _          <- putStrLn(s"count: ${brands.count}")
     _          <- putStrLn(s"schema: ${brands.printSchema()}")
-    _          <- putStrLn(s"sample: ${brands.show(false)}")
+    _          <- putStrLn(s"sample: ${brands.show(50, truncate = false)}")
+//    checkBrand  = brands.filter(col("brand") === "OneTwoTrip.com")
+//    _          <- putStrLn(s"current brand: ${checkBrand.show(50, truncate = false)}")
+//    checkGroup <- SparkApp.countGroupBy(checkBrand, "mcc_supercat", "merchant_clr", "merchant_id", "merchant_city_nm").provide(spark)
+//    _          <- putStrLn(s"stats: ${checkGroup.show(300, truncate = false)}")
     // collect Statistics with Brands on Census cluster DataFrame
-    brandsStat <- SparkApp.countStatistics(brands.filter("brands_part == 'travel_4'"), "mcc_supercat", "brands_part", "brand").provide(spark)
-    _          <- putStrLn(s"stats: ${brandsStat.show(300, truncate = false)}")
+    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "has_brand").provide(spark)
+    _          <- putStrLn(s"stats: ${brandsStat.show(50, truncate = false)}")
+    brandsGrp  <- SparkApp.countGroupBy(brands, "mcc_supercat", "brands_part", "has_brand").provide(spark)
+    _          <- putStrLn(s"stats: ${brandsGrp.show(50, truncate = false)}")
   } yield ()
 
   /*
