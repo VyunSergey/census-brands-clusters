@@ -4,6 +4,7 @@ import com.vyunsergey.args._
 import com.vyunsergey.conf._
 import com.vyunsergey.spark._
 import com.vyunsergey.struct._
+import org.apache.spark.sql.functions._
 import zio._
 import zio.console._
 
@@ -15,8 +16,8 @@ object Main extends App {
    */
   def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
 //    createClusters(args)
-    checkResult(args)
-//    createBrands(args)
+//    checkResult(args)
+    createBrands(args)
       .provideSomeLayer[ZEnv](Configuration.live ++ SparkEnv.live)
       .foldM(
         error => putStrLn(s"Execution failed with error: $error") *> ZIO.succeed(1),
@@ -47,7 +48,7 @@ object Main extends App {
     // read Excel Dictionary
     excel      <- SparkApp.readExcel(conf.readConf, BrandsDictSchema.schema).provide(spark)
     // filter on Column mcc_supercat
-    superCat    = "Поездки, доставка, хранение"
+    superCat    = "Интернет-магазины"
     // filter Rules from Excel with Column mcc_supercat
     rules      <- SparkApp.filterData(excel, "mcc_supercat", Some(superCat)).provide(spark)
     // create Brands Expression as String
@@ -61,9 +62,24 @@ object Main extends App {
     _          <- putStrLn(s"count: ${brands.count}")
     _          <- putStrLn(s"schema: ${brands.printSchema()}")
     _          <- putStrLn(s"sample: ${brands.show(false)}")
+    brandsCols <- Task(
+                    brands
+                      .filter(col("brand").isNull)
+                      //.filter(substring(trim(lower(col("merchant_nm"))), 0, 6) =!= "paypal")
+                      .withColumn("merchant_clr",
+                        substring(trim(lower(col("merchant_nm"))), 0, 10))
+                      // Fix Price - "(md|www|md\\W*www)*\\W*fix\\W*price\\W*(ru)*"
+                      // PayPal - "(md|www|md\\W*www)*\\W*paypal\\W*(ru)*"
+                      .withColumn("test_reg_exp",
+                        regexp_extract(trim(lower(col("merchant_nm"))), "(md|www|md\\W*www)*\\W*paypal\\W*(ru)*", 0))
+                      )
     // collect Statistics with Brands on Census cluster DataFrame
-    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "mcc_cat", "mcc_name", "mcc_code", "brand").provide(spark)
-    _          <- putStrLn(s"stats: ${brandsStat.show(300, truncate = false)}")
+    brandsStat <- SparkApp.countStatistics(brandsCols, "mcc_supercat", "brands_part", "mcc_name", "mcc_code",
+                           "brand", "test_reg_exp", "merchant_clr").provide(spark)
+    _          <- putStrLn(s"stats: ${brandsStat.show(50, truncate = false)}")
+    brandsGroup<- SparkApp.countGroupBy(brandsCols, "mcc_supercat", "brands_part", "mcc_name", "mcc_code",
+                           "brand", "test_reg_exp", "merchant_clr").provide(spark)
+    _          <- putStrLn(s"stats: ${brandsGroup.show(50, truncate = false)}")
   } yield ()
 
   /*
@@ -83,6 +99,8 @@ object Main extends App {
     _          <- putStrLn(s"sample: ${data.show(false)}")
     statsBrand <- SparkApp.countStatistics(data, "mcc_supercat", "brands_part", "mcc_cat").provide(spark)
     _          <- putStrLn(s"stats: ${statsBrand.show(300, truncate = false)}")
+    statsGroup <- SparkApp.countGroupBy(data, "mcc_supercat", "brands_part", "mcc_cat").provide(spark)
+    _          <- putStrLn(s"group: ${statsGroup.show(300, truncate = false)}")
   } yield ()
 
   /*
