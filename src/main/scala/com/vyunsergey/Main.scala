@@ -80,6 +80,7 @@ object Main extends App {
     brandsGroup<- SparkApp.countGroupBy(brandsCols, "mcc_supercat", "brands_part", "mcc_name", "mcc_code",
                            "brand", "test_reg_exp", "merchant_clr").provide(spark)
     _          <- putStrLn(s"stats: ${brandsGroup.show(50, truncate = false)}")
+    _          <- Task(spark.stop())
   } yield ()
 
   /*
@@ -101,6 +102,7 @@ object Main extends App {
     _          <- putStrLn(s"stats: ${statsBrand.show(300, truncate = false)}")
     statsGroup <- SparkApp.countGroupBy(data, "mcc_supercat", "brands_part", "mcc_cat").provide(spark)
     _          <- putStrLn(s"group: ${statsGroup.show(300, truncate = false)}")
+    _          <- Task(spark.stop())
   } yield ()
 
   /*
@@ -139,5 +141,6 @@ object Main extends App {
     _          <- putStrLn(s"stats: ${statsBrand.show(300, truncate = false)}")
     _          <- SparkApp.writeData(conf.writeConf, brandsData, writePath, List("brands_part")).provide(spark)
     _          <- putStrLn("============DONE SAVING DATA============")
+    _          <- Task(spark.stop())
   } yield ()
 }
