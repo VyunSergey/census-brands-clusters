@@ -12,6 +12,9 @@ object ArgumentsParser {
 
   def parse(args: List[String]): ZIO[ZEnv, Nothing, Option[Arguments]] = {
     Task(
+      println(s"Arguments: ${args.mkString(" ")}" )
+    ).orDie *>
+    Task(
       args match {
         case "--read-path" :: readPath ::
              "--write-path" :: writePath :: Nil => Some(Arguments(Some(readPath), Some(writePath)))
