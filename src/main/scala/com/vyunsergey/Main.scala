@@ -56,7 +56,7 @@ object Main extends App {
     _          <- putStrLn(s"expression:\n${SparkApp.BothSubstring(expr, 1000)}")
     // read Census cluster DataFrame
     data       <- SparkApp.readData(conf.readConf, CensusSchema.schema, readPath).provide(spark)
-                    .map(_.filter(col("brands_part").isin("travel_1")))
+                    .map(_.filter(col("brands_part").isin("travel_1", "travel_3", "travel_4")))
     _          <- putStrLn(s"count: ${data.count}")
     // create Brands from Census cluster DataFrame with Brands Expression
     brands     <- SparkApp.withBrandColumn(data, "brand", rules,
@@ -65,6 +65,7 @@ object Main extends App {
                          .withColumn("has_brand", col("brand").isNotNull)
                          .withColumn("mcc_clr", trim(lower(substring(col("mcc_name"), 0, 15))))
                          .withColumn("merchant_clr", trim(lower(substring(col("merchant_nm"), 0, 15))))
+                         //.filter(!substring(col("merchant_clr"), 0, 3).isin("atm", "itt", "ooo", "trm", "mkr", "vtb", "obr", "???"))
                          .cache()
                    )
     _          <- putStrLn(s"count: ${brands.count}")
@@ -79,6 +80,7 @@ object Main extends App {
     _          <- putStrLn(s"stats: ${brandsStat.show(50, truncate = false)}")
     brandsGrp  <- SparkApp.countGroupBy(brands, "mcc_supercat", "brands_part", "has_brand").provide(spark)
     _          <- putStrLn(s"stats: ${brandsGrp.show(50, truncate = false)}")
+    _          <- Task(spark.stop())
   } yield ()
 
   /*
@@ -116,6 +118,7 @@ object Main extends App {
                                             .filter("brand not in('неиспользуемый код', 'другие компании')"),
       "mcc_name", "rule", "brand").provide(spark)
     _          <- putStrLn(s"stats: ${statsBrand.show(300, truncate = false)}")
+    _          <- Task(spark.stop())
   } yield ()
 
   /*
@@ -154,5 +157,6 @@ object Main extends App {
     _          <- putStrLn(s"stats: ${statsBrand.show(300, truncate = false)}")
     _          <- SparkApp.writeData(conf.writeConf, brandsData, writePath, List("brands_part")).provide(spark)
     _          <- putStrLn("============DONE SAVING DATA============")
+    _          <- Task(spark.stop())
   } yield ()
 }
