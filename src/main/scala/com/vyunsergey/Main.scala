@@ -8,6 +8,8 @@ import org.apache.spark.sql.functions._
 import zio._
 import zio.console._
 
+import scala.collection.mutable
+
 object Main extends App {
   type AppEnvironment = ZEnv with Configuration with SparkEnv
 
@@ -63,55 +65,13 @@ object Main extends App {
       "brand", "reg_exp").provide(spark)
                    .map(_.filter(col("brand").isNull)
                          .withColumn("has_brand", col("brand").isNotNull)
-                         .withColumn("mcc_clr", trim(lower(substring(col("mcc_name"), 0, 15))))
-                         .withColumn("merchant_clr", trim(lower(substring(col("merchant_nm"), 0, 15))))
+                         .withColumn("mcc_clr", trim(lower(substring(col("mcc_name"), 0, 30))))
+                         .withColumn("merchant_clr", trim(lower(substring(col("merchant_nm"), 0, 30))))
                          //.withColumn("paypal",
                    //when(length(regexp_extract(trim(lower(col("merchant_nm"))), "paypal", 0)) > 0, "paypal"))
                          //.filter(!substring(col("merchant_clr"), 0, 3).isin("atm", "itt", "ooo", "trm", "mkr", "vtb", "obr", "???"))
                          //.filter(col("paypal").isNotNull)
                          .cache())
-                   .map(_.filter(length(regexp_extract(col("merchant_clr"), "^ip\\s.*", 0)) === 0))
-                   .map(_.filter(!col("merchant_clr").isin(
-                     "stroymaterialy", "mebel", "magazin", "strojmaterialy",
-                     "produkty", "khoztovary", "stroitelnye mat", "magazin produkt", "absolyut",
-                     "tkani", "bytovaya tekhni", "cvety", "santekhnika", "khoztovary",
-                     "stroitelnyy dvo", "santekhnika", "magazin", "elektrotovary", "stroitel", "stroymarket",
-                     "shtory", "bytovaya khimiy", "magazin", "master", "krepezh",
-                     "khozyayushka", "promtovary", "ekspert", "stroimaterialy",
-                     "oboi", "masterok", "stroymaster", "magazin stroite", "dostavka",
-                     "tovary dlya dom", "dveri", "tekstil", "promtovary", "elektronika", "fabrika mebeli",
-                     "uyut", "komfort", "elektrika", "magazin santekh", "magazin elektro",
-                     "posuda", "semena", "lider", "santehnika", "fortuna", "instrumenty", "magazin mebel",
-                     "tsvety", "instrument", "domovoy", "hoztovary", "berezka", "domovenok", "zolushka",
-                     "nadezhda", "interer", "prestizh", "svetlana", "dachnik", "favorit", "apelsin", "viktoriya",
-                     "kovry", "khozmag", "ekonom", "elektromir", "sadovod", "molotok",
-                     "torgovyj centr", "odezhda", "stroyka", "germes", "universal",
-                     "domovoj", "mechta", "diana", "mir mebeli", "servisnyj centr", "vash dom", "internet-magazi",
-                     "magazin khoztov", "magazin master", "khozyain", "elektroinstrume", "mebelnyy salon",
-                     "magazin krepezh", "tekstil dlya do", "magazin khozyay", "magazin mebeli", "mebelnyj salon",
-                     "dom oboev", "magazin stroyma", "magazin 1", "magazin uyut", "stroydom", "mir oboev",
-                     "strojmarket", "magazin tkani", "mebel dlya vas", "salon shtor", "dom mebeli", "spektr",
-                     "smeshannye tova", "magazin elektri", "assorti", "azbuka mebeli", "avtozapchasti",
-                     "torgovi centr l", "univermag", "levsha", "vodoley", "femili", "magazin atlantt", "nika",
-                     "usadba", "servisnyy tsent", "khimchistka", "magazin 2", "olimp", "domostroy", "arsenal",
-                     "mir sveta", "domashnij tekst", "ofis", "stroymag", "okna", "vizit", "keramicheskaya",
-                     "12 stulev", "dekor", "domashniy tekst", "salon mebeli", "komandor", "vesna",
-                     "tatyana", "rybolov", "mebel na zakaz", "versal", "profi", "elena", "orion",
-                     "magazin \"park\"", "mod dostavka", "sklad", "lotos", "teremok", "feniks", "elektron",
-                     "alyans", "sputnik", "partner", "perekrestok", "podarki", "planeta", "standart",
-                     "atlant", "mayak", "svet", "universam", "poltseny", "saturn", "kristall", "orbita",
-                     "kapriz", "nadomarket", "garant", "mebel grad", "plastika okon", "vasha mebel",
-                     "otdelochnye mat", "khoz tovary", "stroydvor", "khozmarket", "studiya mebeli",
-                     "mebelgrad", "khozmaster", "mir santekhniki", "novosel", "stroydepo", "tekhnomir",
-                     "vse dlya remont", "stroiymaterialy", "solnyshko", "dps", "trikotazh", "hypermarketmebe",
-                     "galantereya", "khoz.tovary", "shans", "kontinent", "avrora", "stil", "merkuriy", "elektrik",
-                     "feyerverki", "udacha", "upravdom", "radiotovary", "parus", "mebelnaya furni", "megastroy",
-                     "igrushki", "internet magazi", "tsentralnyy", "smeshnye ceny", "vologodskij tek", "torgovyy tsentr",
-                     "kaminy pechi dy", "khozyaystvennyy", "magazin berezka", "magazin instrum", "magazin nadezhd",
-                     "magazin oboi", "santehnika-onla", "napolnye pokryt", "magazin khozyai", "torgovyy dom vi",
-                     "cp biznes servi", "lyubimyy dom", "vse dlya vas", "dlya vas", "magazin cimus n",
-                     "ooo grand", "dobryy den"
-                   )))
     _          <- putStrLn(s"count: ${brands.count}")
     _          <- putStrLn(s"schema: ${brands.printSchema()}")
     _          <- putStrLn(s"sample: ${brands.filter(col("brand").isNull).show(50, truncate = false)}")
@@ -120,11 +80,15 @@ object Main extends App {
 //    checkGroup <- SparkApp.countGroupBy(checkBrand, "mcc_supercat", "merchant_clr", "merchant_id", "merchant_city_nm").provide(spark)
 //    _          <- putStrLn(s"stats: ${checkGroup.show(300, truncate = false)}")
     // collect Statistics with Brands on Census cluster DataFrame
-    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "mcc_code", "merchant_clr").provide(spark)
+    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "mcc_code", "merchant_clr").provide(spark)
     _          <- putStrLn(s"stats: ${brandsStat.show(50, truncate = false)}")
-    brandsGrp  <- SparkApp.countGroupBy(brands, "mcc_supercat", "mcc_code", "merchant_clr").provide(spark)
+    udf        <- Task(udf((x: mutable.WrappedArray[String]) => x.length))
+    brandsGrp  <- SparkApp.countGroupBy(brands, "mcc_supercat", "brands_part", "mcc_code", "merchant_clr").provide(spark)
                   //.map(_.filter(col("merchant_clr").isin("vse dlya doma")))
-                  .map(_.filter(col("count") > 100))
+                  .map(_.filter(col("count") > 30)
+                        .withColumn("words", udf(split(col("merchant_clr"), " ")))
+                        .orderBy(col("words").asc, col("count").desc)
+                  )
     _          <- putStrLn(s"stats: ${brandsGrp.show(50, truncate = false)}")
     _          <- Task(spark.stop())
   } yield ()
