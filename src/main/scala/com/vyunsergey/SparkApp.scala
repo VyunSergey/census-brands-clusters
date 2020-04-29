@@ -229,6 +229,11 @@ object SparkApp {
     Task(data.withColumn(colName, expr(expression)))
   }
 
+  def clearColumn(col: Column): Column = {
+    def regRep(e: Column, p: String, r: String): Column = regexp_replace(e, p, r)
+    regRep(regRep(regRep(lower(trim(col)), "[.-]", " "), "[^a-zA-Zа-яА-Я ]", ""), "  ", " ")
+  }
+
   def createBrandExpression(data: DataFrame,
                             brandColName: String,
                             exprColName: String): ZIO[SparkSession, Throwable, String] = for {
