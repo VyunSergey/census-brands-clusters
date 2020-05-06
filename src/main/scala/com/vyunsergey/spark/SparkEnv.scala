@@ -15,10 +15,10 @@ object SparkEnv {
         SparkSession.builder()
           .appName(name)
           .master(s"local[$cores]")
-          .config("spark.driver.memory", "6G")
+          .config("spark.driver.memory", "16G")
           .config("spark.driver.memoryOverhead", "2G")
           .config("spark.driver.maxResultSize", "6G")
-          .config("spark.executor.memory", "2G")
+          .config("spark.executor.memory", "4G")
           .config("spark.executor.memoryOverhead", "1G")
           .config("spark.executor.extraJavaOptions",
             "-Xss1024m -XX:+UseG1GC -XX:+PrintGCDetails -XX+CrashOnOutOfMemoryError -XX:+CMSClassUnloadingEnabled")
