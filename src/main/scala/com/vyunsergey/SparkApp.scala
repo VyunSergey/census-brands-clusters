@@ -231,7 +231,13 @@ object SparkApp {
 
   def clearColumn(col: Column): Column = {
     def regRep(e: Column, p: String, r: String): Column = regexp_replace(e, p, r)
-    regRep(regRep(regRep(lower(trim(col)), "[.-]", " "), "[^a-zA-Zа-яА-Я ]", ""), "  ", " ")
+    trim(
+      regRep(
+        regRep(
+          regRep(regRep(lower(trim(col)), "[.-]", " "), "[^a-zA-Zа-яА-Я ]", ""),
+        "^(ooo|www|oao|oa|ip) ", ""),
+      "  ", " ")
+    )
   }
 
   def createBrandExpression(data: DataFrame,
