@@ -98,6 +98,15 @@ object SparkApp {
     )
   }
 
+  def collectList(data: DataFrame, colName: String): ZIO[SparkSession, Throwable, List[String]] = for {
+    spark <- ZIO.environment[SparkSession]
+    list  <- Task({
+      import spark.implicits._
+
+      data.select(col(colName).as[String]).collect.toList
+    })
+  } yield list
+
   def countGroupBy(data: DataFrame,
                    colNames: String*): ZIO[SparkSession, Throwable, DataFrame] = {
     Task(
