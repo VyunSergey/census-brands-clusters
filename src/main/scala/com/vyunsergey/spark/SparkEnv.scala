@@ -27,6 +27,7 @@ object SparkEnv {
           .config("spark.shuffle.service.enabled", value = true)
           .config("spark.sql.shuffle.partitions", cores)
           .config("spark.default.parallelism", cores)
+          .config("spark.debug.maxToStringFields", 300)
           .getOrCreate()
       )
       _ <- Task(spark.sparkContext.setLogLevel("WARN"))
