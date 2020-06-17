@@ -132,13 +132,13 @@ object SparkApp {
   }
 
   def splitLineRDD(rdd: RDD[Row],
-                   separator: String): ZIO[SparkSession, Throwable, RDD[Row]] = {
+                   separator: String,
+                   columnsNum: Int): ZIO[SparkSession, Throwable, RDD[Row]] = {
     Task(
       rdd.map({row =>
         val line: List[String] = row.getString(0).split(separator).toList
-        if (line.length == 17) {
-          Row(line.head, line(1), line(2), line(3), line(4), line(5), line(6), line(7), line(8),
-            line(9), line(10), line(11), line(12), line(13), line(14), line(15), line(16))
+        if (line.length == columnsNum) {
+          Row(Range(0, columnsNum).toList.map(line(_)): _*)
         } else {
           Row("NULL")
         }
