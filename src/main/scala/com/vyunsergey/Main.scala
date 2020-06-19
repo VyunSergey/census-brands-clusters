@@ -19,9 +19,9 @@ object Main extends App {
    * Main program function
    */
   def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
-    createClusters(args)
+//    createClusters(args)
 //    checkRules(args)
-//    checkResult(args)
+    checkResult(args)
       .provideSomeLayer[ZEnv](Configuration.live ++ SparkEnv.live)
       .foldM(
         error => putStrLn(s"Execution failed with error: $error") *> ZIO.succeed(1),
@@ -32,9 +32,8 @@ object Main extends App {
   /*
    * Load Excel Dictionary with specified schema:
    * root
-   *  |-- num: integer (nullable = true)
-   *  |-- reg_exp: string (nullable = true)
-   *  |-- brand: string (nullable = true)
+   *  |-- value: string (nullable = true)
+   *  |-- internet_flag: string (nullable = true)
    *  |-- mcc_supercat: string (nullable = true)
    *  |-- comment: string (nullable = true)
    *
@@ -50,88 +49,91 @@ object Main extends App {
     _          <- putStrLn(s"write path: $writePath")
     spark      <- createSparkSession("census-brands", 8)
     // read Excel Dictionary
-    excel      <- SparkApp.readExcel(conf.readConf, BrandsDictSchema.schema).provide(spark)
+    excel      <- SparkApp.readExcel(conf.readConf, OnlineMovementDictSchema.schema).provide(spark)
     // filter on Column mcc_supercat
-    superCat    = "Всё для дома"
+    superCat    = "Поездки, доставка, хранение"
     // filter Rules from Excel with Column mcc_supercat
-    rules      <- SparkApp.filterData(excel, "mcc_supercat", Some(superCat)).provide(spark).map(_.cache)
+    rules      <- SparkApp.filterData(excel, "mcc_supercat", Some(superCat)).provide(spark)
+                   .map(_.filter(col("internet_flag") =!= "P")
+                         .filter(instr(col("value"), "inn") === 0)
+                         .cache)
     // create Brands Expression as String
-    expr       <- SparkApp.createBrandExpression(rules, "brand", "reg_exp").provide(spark)
+    expr       <- SparkApp.createBrandExpression(rules, "internet_flag_check", "value").provide(spark)
     _          <- putStrLn(s"expression:\n${SparkApp.BothSubstring(expr, 1000)}")
     // read Census cluster DataFrame
     data       <- SparkApp.readData(conf.readConf, CensusSchema.schema, readPath).provide(spark)
     _          <- putStrLn(s"count: ${data.count}")
     // create Brands from Census cluster DataFrame with Brands Expression
-    udf        <- Task(udf((x: mutable.WrappedArray[String]) => x.length))
-    brands     <- SparkApp.withBrandColumn(data, "brand", rules, "brand", "reg_exp").provide(spark)
-                   .map(_.filter(col("brand").isNull)
-                         .withColumn("has_brand", col("brand").isNotNull)
-                         .withColumn("mcc_clr", substring(SparkApp.clearColumn(col("mcc_name")), 0, 30))
-                         .withColumn("merchant_clr", substring(SparkApp.clearColumn(col("merchant_nm")), 0, 30))
-                         .withColumn("words", udf(split(col("merchant_clr"), " ")))
-                         .cache)
-    _          <- putStrLn(s"count: ${brands.count}")
-    _          <- putStrLn(s"schema: ${brands.printSchema()}")
-    _          <- putStrLn(s"sample: ${brands.filter(col("brand").isNull).show(50, truncate = false)}")
+//    udf        <- Task(udf((x: mutable.WrappedArray[String]) => x.length))
+//    brands     <- SparkApp.withBrandColumn(data, "brand", rules, "brand", "reg_exp").provide(spark)
+//                   .map(_.filter(col("brand").isNull)
+//                         .withColumn("has_brand", col("brand").isNotNull)
+//                         .withColumn("mcc_clr", substring(SparkApp.clearColumn(col("mcc_name")), 0, 30))
+//                         .withColumn("merchant_clr", substring(SparkApp.clearColumn(col("merchant_nm")), 0, 30))
+//                         .withColumn("words", udf(split(col("merchant_clr"), " ")))
+//                         .cache)
+//    _          <- putStrLn(s"count: ${brands.count}")
+//    _          <- putStrLn(s"schema: ${brands.printSchema()}")
+//    _          <- putStrLn(s"sample: ${brands.filter(col("brand").isNull).show(50, truncate = false)}")
 //    checkBrand  = brands.filter(col("brand") === "OneTwoTrip.com")
 //    _          <- putStrLn(s"current brand: ${checkBrand.show(50, truncate = false)}")
 //    checkGroup <- SparkApp.countGroupBy(checkBrand, "mcc_supercat", "merchant_clr", "merchant_id", "merchant_city_nm").provide(spark)
 //    _          <- putStrLn(s"stats: ${checkGroup.show(300, truncate = false)}")
     // collect Statistics with Brands on Census cluster DataFrame
-    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "merchant_city_nm", "has_brand").provide(spark)
-    _          <- putStrLn(s"stats: ${brandsStat.show(50, truncate = false)}")
-    brandsGrp  <- SparkApp.countGroupBy(brands, "mcc_supercat", "brands_part", "merchant_city_nm", "has_brand").provide(spark)
+//    brandsStat <- SparkApp.countStatistics(brands, "mcc_supercat", "brands_part", "merchant_city_nm", "has_brand").provide(spark)
+//    _          <- putStrLn(s"stats: ${brandsStat.show(50, truncate = false)}")
+//    brandsGrp  <- SparkApp.countGroupBy(brands, "mcc_supercat", "brands_part", "merchant_city_nm", "has_brand").provide(spark)
                   //.map(_.filter(col("count") > 100)
                   //      .orderBy(col("words").asc, col("count").desc)
                   //)
-    _          <- putStrLn(s"stats: ${brandsGrp.show(50, truncate = false)}")
-    brandsMsc  <- Task(brands
-                       .withColumn("brand", when(col("brand") === "НЕ БРЕНД", "")
-                         .when(col("brand") === "ИП", "").otherwise(col("brand")))
-                       .withColumn("brand", coalesce(col("brand"), lit("")))
-                       .withColumn("merchant_nm", coalesce(col("merchant_nm"), lit("")))
-                       .withColumn("terminal_id", coalesce(col("terminal_id"), lit("")))
-                       .filter(col("merchant_city_nm").isin("MOSCOW", "MOSKVA", "G MOSKVA", "MASKVA"))
-                       .filter(col("latitude_mt") =!= "\\N" && col("latitude_mt").isNotNull)
-                       .filter(col("longitude_mt") =!= "\\N" && col("longitude_mt").isNotNull)
-                       .filter(col("brand").isin("Эконика"))
-                       .withColumn("rn", row_number().over(Window.partitionBy(col("merchant_nm"),
-                         col("terminal_id"), col("latitude_mt"), col("longitude_mt"))
-                         .orderBy(col("brand").desc_nulls_last, col("terminal_id").desc_nulls_last)))
-                       .filter(col("rn") === 1)
-                       .drop(col("rn"))
-                       .withColumn("brand_count", sum(lit(1L)).over(Window.partitionBy(col("brand"))))
-                       .withColumn("brand", when(col("brand") === "", "Остальное").otherwise(col("brand")))
-                       .withColumn("rank", dense_rank().over(Window.orderBy(col("brand_count").desc, col("brand"))))
-                       .withColumn("latitude_mt", col("latitude_mt").cast(DecimalType(18, 6)))
-                       .withColumn("longitude_mt", col("longitude_mt").cast(DecimalType(18, 6)))
-                       .cache)
-    _          <- putStrLn(s"brandsMsc count: ${brandsMsc.count}")
-    _          <- putStrLn(s"brandsMsc sample: ${brandsMsc.show(50, truncate = false)}")
-    mapMoscow  <- Task(brandsMsc
-                       .filter(col("brand_count") > 10)
-                       .filter(col("latitude_mt") >= 55.55 && col("latitude_mt") <= 55.95)
-                       .filter(col("longitude_mt") >= 37.35 && col("longitude_mt") <= 37.85)
-                       .groupBy(col("latitude_mt"), col("longitude_mt"), col("brand"))
-                       .agg(
-                         max(col("merchant_nm")).as("merchant_nm"),
-                         max(col("terminal_id")).as("terminal_id"),
-                         max(col("brand_count")).as("brand_count"),
-                         max(col("rank")).as("rank")
-                       )
-                       .select(
-                         col("latitude_mt").as("Широта"),
-                         col("longitude_mt").as("Долгота"),
-                         concat_ws(" ", col("brand"), col("merchant_nm"),
-                           col("terminal_id")).as("Описание"),
-                         col("brand").as("Подпись"),
-                         col("rank").as("Номер метки"),
-                         col("brand_count"))
-                       .orderBy(col("Номер метки").desc))
-    _          <- putStrLn(s"mapMoscow count: ${mapMoscow.count}")
-    _          <- putStrLn(s"mapMoscow sample: ${mapMoscow.show(50, truncate = false)}")
-    _          <- SparkApp.writeData(conf.writeConf, mapMoscow
-                  .select("Широта", "Долгота", "Описание", "Подпись", "Номер метки"), writePath).provide(spark)
+//    _          <- putStrLn(s"stats: ${brandsGrp.show(50, truncate = false)}")
+//    brandsMsc  <- Task(brands
+//                       .withColumn("brand", when(col("brand") === "НЕ БРЕНД", "")
+//                         .when(col("brand") === "ИП", "").otherwise(col("brand")))
+//                       .withColumn("brand", coalesce(col("brand"), lit("")))
+//                       .withColumn("merchant_nm", coalesce(col("merchant_nm"), lit("")))
+//                       .withColumn("terminal_id", coalesce(col("terminal_id"), lit("")))
+//                       .filter(col("merchant_city_nm").isin("MOSCOW", "MOSKVA", "G MOSKVA", "MASKVA"))
+//                       .filter(col("latitude_mt") =!= "\\N" && col("latitude_mt").isNotNull)
+//                       .filter(col("longitude_mt") =!= "\\N" && col("longitude_mt").isNotNull)
+//                       .filter(col("brand").isin("Эконика"))
+//                       .withColumn("rn", row_number().over(Window.partitionBy(col("merchant_nm"),
+//                         col("terminal_id"), col("latitude_mt"), col("longitude_mt"))
+//                         .orderBy(col("brand").desc_nulls_last, col("terminal_id").desc_nulls_last)))
+//                       .filter(col("rn") === 1)
+//                       .drop(col("rn"))
+//                       .withColumn("brand_count", sum(lit(1L)).over(Window.partitionBy(col("brand"))))
+//                       .withColumn("brand", when(col("brand") === "", "Остальное").otherwise(col("brand")))
+//                       .withColumn("rank", dense_rank().over(Window.orderBy(col("brand_count").desc, col("brand"))))
+//                       .withColumn("latitude_mt", col("latitude_mt").cast(DecimalType(18, 6)))
+//                       .withColumn("longitude_mt", col("longitude_mt").cast(DecimalType(18, 6)))
+//                       .cache)
+//    _          <- putStrLn(s"brandsMsc count: ${brandsMsc.count}")
+//    _          <- putStrLn(s"brandsMsc sample: ${brandsMsc.show(50, truncate = false)}")
+//    mapMoscow  <- Task(brandsMsc
+//                       .filter(col("brand_count") > 10)
+//                       .filter(col("latitude_mt") >= 55.55 && col("latitude_mt") <= 55.95)
+//                       .filter(col("longitude_mt") >= 37.35 && col("longitude_mt") <= 37.85)
+//                       .groupBy(col("latitude_mt"), col("longitude_mt"), col("brand"))
+//                       .agg(
+//                         max(col("merchant_nm")).as("merchant_nm"),
+//                         max(col("terminal_id")).as("terminal_id"),
+//                         max(col("brand_count")).as("brand_count"),
+//                         max(col("rank")).as("rank")
+//                       )
+//                       .select(
+//                         col("latitude_mt").as("Широта"),
+//                         col("longitude_mt").as("Долгота"),
+//                         concat_ws(" ", col("brand"), col("merchant_nm"),
+//                           col("terminal_id")).as("Описание"),
+//                         col("brand").as("Подпись"),
+//                         col("rank").as("Номер метки"),
+//                         col("brand_count"))
+//                       .orderBy(col("Номер метки").desc))
+//    _          <- putStrLn(s"mapMoscow count: ${mapMoscow.count}")
+//    _          <- putStrLn(s"mapMoscow sample: ${mapMoscow.show(50, truncate = false)}")
+//    _          <- SparkApp.writeData(conf.writeConf, mapMoscow
+//                  .select("Широта", "Долгота", "Описание", "Подпись", "Номер метки"), writePath).provide(spark)
     _          <- Task(spark.stop())
   } yield ()
 
