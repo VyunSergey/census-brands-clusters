@@ -78,7 +78,7 @@ object Main extends App {
                          .cache)
     _          <- putStrLn(s"count: ${online.count}")
     _          <- putStrLn(s"schema: ${online.printSchema()}")
-    _          <- putStrLn(s"sample: ${online.filter(col("brand").isNull).show(50, truncate = false)}")
+    _          <- putStrLn(s"sample: ${online.show(50, truncate = false)}")
 //    checkBrand  = brands.filter(col("brand") === "OneTwoTrip.com")
 //    _          <- putStrLn(s"current brand: ${checkBrand.show(50, truncate = false)}")
 //    checkGroup <- SparkApp.countGroupBy(checkBrand, "mcc_supercat", "merchant_clr", "merchant_id", "merchant_city_nm").provide(spark)
